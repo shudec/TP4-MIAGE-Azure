@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Support MIAGE</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --ink: #17212b;
+            --muted: #607080;
+            --paper: #f4f7f5;
+            --surface: #ffffff;
+            --line: #d7dfdb;
+            --brand: #006b5f;
+            --brand-dark: #004a42;
+            --accent: #e9b44c;
+            --error: #a22929;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            color: var(--ink);
+            background:
+                linear-gradient(135deg, rgba(0, 107, 95, 0.08), transparent 45%),
+                repeating-linear-gradient(90deg, transparent 0 31px, rgba(23, 33, 43, 0.025) 32px),
+                var(--paper);
+            font-family: Georgia, "Times New Roman", serif;
+        }
+
+        .shell {
+            width: min(920px, calc(100% - 32px));
+            min-height: 100vh;
+            margin: 0 auto;
+            display: grid;
+            grid-template-rows: auto 1fr auto;
+        }
+
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            padding: 24px 0 18px;
+            border-bottom: 1px solid var(--line);
+        }
+
+        h1 { margin: 0; font-size: clamp(1.5rem, 4vw, 2.2rem); letter-spacing: 0; }
+
+        .status {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--muted);
+            font: 700 0.75rem/1.2 "Segoe UI", sans-serif;
+            text-transform: uppercase;
+        }
+
+        .status::before {
+            content: "";
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: var(--accent);
+        }
+
+        #messages {
+            min-height: 340px;
+            padding: 28px 0;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .message {
+            max-width: 78%;
+            padding: 14px 16px;
+            border: 1px solid var(--line);
+            background: var(--surface);
+            border-radius: 6px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+        }
+
+        .message.user {
+            align-self: flex-end;
+            color: white;
+            background: var(--brand);
+            border-color: var(--brand);
+        }
+
+        .message.error { color: var(--error); border-color: #e4b4b4; }
+
+        form {
+            position: sticky;
+            bottom: 0;
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 10px;
+            padding: 18px 0 24px;
+            background: linear-gradient(transparent, var(--paper) 20%);
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 52px;
+            max-height: 160px;
+            resize: vertical;
+            padding: 14px;
+            color: var(--ink);
+            background: var(--surface);
+            border: 1px solid #aebbb5;
+            border-radius: 4px;
+            font: 1rem/1.4 "Segoe UI", sans-serif;
+        }
+
+        textarea:focus { outline: 3px solid rgba(0, 107, 95, 0.18); border-color: var(--brand); }
+
+        button {
+            min-width: 112px;
+            padding: 0 20px;
+            color: white;
+            background: var(--brand-dark);
+            border: 0;
+            border-radius: 4px;
+            font: 700 0.9rem/1 "Segoe UI", sans-serif;
+            cursor: pointer;
+        }
+
+        button:disabled { cursor: wait; opacity: 0.55; }
+
+        @media (max-width: 600px) {
+            header { align-items: flex-start; flex-direction: column; }
+            .message { max-width: 92%; }
+            form { grid-template-columns: 1fr; }
+            button { min-height: 48px; }
+        }
+    </style>
+</head>
+<body>
+<main class="shell">
+    <header>
+        <h1>Support informatique MIAGE</h1>
+        <span class="status" id="status">Prêt</span>
+    </header>
+
+    <section id="messages" aria-live="polite">
+        <div class="message">Bonjour. Décrivez votre problème informatique et je chercherai la procédure adaptée.</div>
+    </section>
+
+    <form id="chat-form">
+        <textarea id="message" required placeholder="Ex. : Je n'arrive plus à me connecter au VPN" aria-label="Votre question"></textarea>
+        <button id="send" type="submit">Envoyer</button>
+    </form>
+</main>
+
+<script>
+    const form = document.querySelector("#chat-form");
+    const input = document.querySelector("#message");
+    const messages = document.querySelector("#messages");
+    const sendButton = document.querySelector("#send");
+    const status = document.querySelector("#status");
+    let conversationId = null;
+
+    function addMessage(text, kind = "agent") {
+        const message = document.createElement("div");
+        message.className = `message ${kind}`;
+        message.textContent = text;
+        messages.append(message);
+        message.scrollIntoView({ behavior: "smooth", block: "end" });
+    }
+
+    form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const text = input.value.trim();
+        if (!text) return;
+
+        addMessage(text, "user");
+        input.value = "";
+        sendButton.disabled = true;
+        status.textContent = "Recherche";
+
+        try {
+            const response = await fetch("/api/chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ message: text, conversationId })
+            });
+            if (!response.ok) throw new Error(`Erreur HTTP ${response.status}`);
+
+            const body = await response.json();
+            conversationId = body.conversationId;
+            addMessage(body.answer);
+        } catch (error) {
+            addMessage(`Le service est indisponible : ${error.message}`, "error");
+        } finally {
+            sendButton.disabled = false;
+            status.textContent = "Prêt";
+            input.focus();
+        }
+    });
+</script>
+</body>
+</html>
